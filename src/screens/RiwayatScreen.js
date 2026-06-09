@@ -9,6 +9,7 @@ const RiwayatScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState([]); 
+  const [role, setRole] = useState(null); 
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -17,14 +18,23 @@ const RiwayatScreen = () => {
       if (!session) return;
       
       const userData = JSON.parse(session);
-      const response = await fetch(API_ENDPOINTS.getHistory(userData.nim));
+      setRole(userData.role); 
+
+      // LOGIKA PROTEKSI: Jika user adalah mahasiswa, jangan tarik data dari server
+      if (userData.role !== 'lecturer') {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+
+      // Endpoint khusus Dosen untuk monitoring SEMUA riwayat mahasiswa
+      // Pastikan backend mengembalikan field: Nama, Nim, FailureCode, DiagnosisTitle, DateDisplay
+      const response = await fetch(API_ENDPOINTS.getAllHistory || API_ENDPOINTS.getHistory('all')); 
       if (!response.ok) throw new Error("Gagal mengambil data");
 
       const result = await response.json();
       
-      // DEBUG: Liat di terminal Metro, nama field-nya huruf besar atau kecil?
-      console.log("Data Riwayat:", result[0]); 
-      
+      console.log("Data Riwayat Masuk:", result[0]); 
       setData(result);
     } catch (error) {
       console.error("Fetch Error:", error);
@@ -41,10 +51,14 @@ const RiwayatScreen = () => {
   );
 
   const renderCard = ({ item }) => {
-    // PROTEKSI MAPPING: Antisipasi kalau backend ngirim PascalCase (F Besar) atau camelCase (f kecil)
-    const code = item.failureCode || item.FailureCode || "N/A";
-    const title = item.diagnosisTitle || item.DiagnosisTitle || "Tanpa Judul";
-    const date = item.dateDisplay || item.DateDisplay || "-";
+    // Mapping data agar fleksibel dengan penamaan di Database (Besar/Kecil)
+    const code = item.failureCode || item.FailureCode || item.kode || "N/A";
+    const title = item.diagnosisTitle || item.DiagnosisTitle || item.deskripsi || "Tanpa Judul";
+    const date = item.dateDisplay || item.DateDisplay || item.waktu || "-";
+    
+    // Identitas Mahasiswa yang dicari oleh Dosen
+    const studentName = item.nama || item.Nama || item.UserNama || "Mahasiswa";
+    const studentNim = item.nim || item.Nim || item.UserNim || "-";
 
     return (
       <View style={styles.card}>
@@ -57,8 +71,13 @@ const RiwayatScreen = () => {
             <Text style={styles.date}>{date}</Text>
           </View>
         </View>
+
+        {/* BOX INFORMASI MAHASISWA (KHUSUS TAMPILAN DOSEN) */}
+        <View style={styles.studentInfo}>
+          <MaterialCommunityIcons name="account-hard-hat" size={16} color="#003366" />
+          <Text style={styles.studentText}>{studentName} | {studentNim}</Text>
+        </View>
         
-        {/* Teks utama jangan sampai kosong */}
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
@@ -68,9 +87,20 @@ const RiwayatScreen = () => {
     );
   };
 
+  // Tampilan "Lock Screen" jika user yang login adalah Mahasiswa
+  if (role === 'student') {
+    return (
+      <View style={styles.restrictedContainer}>
+        <MaterialCommunityIcons name="lock-alert-outline" size={100} color="#DDD" />
+        <Text style={styles.restrictedTitle}>Akses Terbatas</Text>
+        <Text style={styles.restrictedSub}>Maaf, halaman Monitoring Riwayat hanya dapat diakses oleh akun Dosen untuk keperluan pengawasan.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Riwayat Sesi</Text>
+      <Text style={styles.header}>Monitoring Riwayat</Text>
       
       {loading && !refreshing && data.length === 0 ? (
         <ActivityIndicator size="large" color="#003366" style={{ marginTop: 50 }} />
@@ -86,7 +116,12 @@ const RiwayatScreen = () => {
                onRefresh={() => { setRefreshing(true); fetchHistory(); }} 
             />
           }
-          ListEmptyComponent={<Text style={styles.emptyText}>Tidak ada riwayat diagnosa ditemukan.</Text>}
+          ListEmptyComponent={
+            <View style={{alignItems: 'center', marginTop: 100}}>
+               <MaterialCommunityIcons name="clipboard-text-search-outline" size={80} color="#EEE" />
+               <Text style={styles.emptyText}>Tidak ada riwayat diagnosa ditemukan.</Text>
+            </View>
+          }
         />
       )}
     </View>
@@ -126,7 +161,22 @@ const styles = StyleSheet.create({
   code: { fontWeight: '900', fontSize: 13, color: '#003366' },
   dateContainer: { flexDirection: 'row', alignItems: 'center' },
   date: { color: '#999', fontSize: 11, marginLeft: 5, fontWeight: '600' },
-  title: { fontSize: 18, fontWeight: '700', color: '#333', lineHeight: 24, paddingRight: 10 },
+  
+  // Style Baru Info Mahasiswa (Nama & NIM)
+  studentInfo: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#F0F4F8', 
+    padding: 8, 
+    borderRadius: 8, 
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#D1DBE5'
+  },
+  studentText: { fontSize: 12, fontWeight: 'bold', color: '#003366', marginLeft: 6 },
+
+  title: { fontSize: 17, fontWeight: '700', color: '#333', lineHeight: 24, paddingRight: 10 },
   footerAcent: {
     position: 'absolute',
     bottom: -10,
@@ -136,7 +186,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFD70015', 
     borderRadius: 25,
   },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999', fontSize: 14 }
+  emptyText: { textAlign: 'center', marginTop: 15, color: '#999', fontSize: 14 },
+
+  // Style Tampilan Akses Ditolak (Mahasiswa)
+  restrictedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, backgroundColor: '#FFF' },
+  restrictedTitle: { fontSize: 24, fontWeight: 'bold', color: '#003366', marginTop: 25 },
+  restrictedSub: { textAlign: 'center', color: '#888', marginTop: 12, lineHeight: 22, fontSize: 14 }
 });
 
 export default RiwayatScreen;

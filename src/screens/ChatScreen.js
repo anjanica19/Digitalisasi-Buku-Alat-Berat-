@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar,
-  Keyboard, Alert
+  Keyboard, Alert, Image // Ditambahkan Image
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
@@ -17,9 +17,10 @@ const ChatScreen = ({ navigation, route }) => {
   const [activeData, setActiveData] = useState(null);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [userNim, setUserNim] = useState(null); 
+  const [userNama, setUserNama] = useState(null); 
   const flatListRef = useRef();
 
-  // AMBIL NIM DARI STORAGE PAS LAYAR DIBUKA (SINKRON DENGAN LOGIN)
+  // AMBIL NIM & NAMA DARI STORAGE SAAT LAYAR DIBUKA
   useEffect(() => {
     const getSession = async () => {
       try {
@@ -27,8 +28,11 @@ const ChatScreen = ({ navigation, route }) => {
         if (session) {
           const userData = JSON.parse(session);
           setUserNim(userData.nim);
+          setUserNama(userData.nama);
         }
-      } catch (e) { console.log("Gagal ambil session", e); }
+      } catch (e) { 
+        console.log("Gagal ambil session", e); 
+      }
     };
     getSession();
 
@@ -37,14 +41,18 @@ const ChatScreen = ({ navigation, route }) => {
     }
   }, [route.params?.scannedCode]);
 
-  // FUNGSI UNTUK SIMPAN KE DATABASE RIWAYAT
+  // FUNGSI UNTUK SIMPAN KE DATABASE RIWAYAT (SINKRON DENGAN DOSEN)
   const saveToHistory = async (code, title, solution = null) => {
-    if (!userNim) return; 
+    if (!userNim) {
+      console.log("History tidak disimpan: NIM tidak ditemukan");
+      return;
+    }
 
     try {
       const payload = {
         FailureCode: code,
         UserNim: userNim, 
+        UserNama: userNama, 
         DiagnosisTitle: title,
         TotalSteps: activeData?.causes?.length || activeData?.detail?.causes?.length || 0,
         SolutionText: solution,
@@ -59,11 +67,12 @@ const ChatScreen = ({ navigation, route }) => {
       });
 
       const result = await response.json();
+      
       if (result.session_id) {
         setCurrentSessionId(result.session_id);
       }
     } catch (error) {
-      console.error("Gagal simpan riwayat:", error);
+      console.error("Gagal simpan riwayat ke dosen:", error);
     }
   };
 
@@ -81,8 +90,6 @@ const ChatScreen = ({ navigation, route }) => {
 
     try {
       const url = `${API_ENDPOINTS.failureCode}/${cleanQuery}`;
-      console.log("Mencoba Fetch ke:", url);
-
       const response = await fetch(url);
       const json = await response.json();
 
@@ -106,8 +113,7 @@ const ChatScreen = ({ navigation, route }) => {
         setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: `Kode "${cleanQuery}" tidak ditemukan.` }]);
       }
     } catch (error) {
-      console.log("Error Search:", error);
-      setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: "Koneksi server gagal. Pastikan IP dan Backend sudah benar." }]);
+      setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: "Koneksi server gagal." }]);
     } finally {
       setLoading(false);
     }
@@ -157,7 +163,7 @@ const ChatScreen = ({ navigation, route }) => {
         </View>
 
         <View style={styles.dataSection}>
-          <Text style={styles.labelSmall}>ACTION OF CONTROLLER (RESPON SISTEM):</Text>
+          <Text style={styles.labelSmall}>ACTION OF CONTROLLER:</Text>
           <Text style={styles.valueWhiteSmall}>{data.action_of_controller || '-'}</Text>
         </View>
 
@@ -168,23 +174,20 @@ const ChatScreen = ({ navigation, route }) => {
 
         <View style={styles.dataSection}>
           <Text style={styles.labelSmall}>RELATED INFORMATION:</Text>
-          <Text style={styles.valueWhiteSmall}>
-            {data.related_information || '-'}
-          </Text>
+          <Text style={styles.valueWhiteSmall}>{data.related_information || '-'}</Text>
         </View>
       </View>
     );
   };
 
   const StepCard = ({ data, index }) => {
-    // CEK APAKAH INI LANGKAH TERAKHIR
     const causes = activeData?.causes || activeData?.detail?.causes || [];
     const isLastStep = index === causes.length - 1;
 
     const handleFinishStep = () => {
         const detailData = activeData.detail || activeData;
         saveToHistory(detailData.code, detailData.description, data.cause_description);
-        Alert.alert("Berhasil", "Diagnosa selesai dan sudah tersimpan di riwayat.");
+        Alert.alert("Berhasil", "Diagnosa selesai dan riwayat Anda telah dikirim ke Dosen.");
     };
 
     return (
@@ -193,21 +196,43 @@ const ChatScreen = ({ navigation, route }) => {
             <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>{index + 1}</Text></View>
             <Text style={styles.stepHeaderText}>Langkah Perbaikan</Text>
           </View>
+          
           <Text style={styles.causeDesc}>{data.cause_description}</Text>
           
+          {/* TAMPILKAN GAMBAR SIRKUIT JIKA ADA URL DARI BACKEND */}
+          {data.image_url && (
+            <View style={styles.imgContainer}>
+              <Text style={styles.labelSmall}>CIRCUIT DIAGRAM REFERENCE:</Text>
+              <Image 
+                source={{ uri: data.image_url }} 
+                style={styles.fullImage} 
+                resizeMode="contain" 
+              />
+            </View>
+          )}
+
           <View style={styles.methodBox}>
             <Text style={styles.labelSmall}>CHECK METHOD:</Text>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 2 }}>
               {data.special_method === 'iya' && (
-                <MaterialCommunityIcons 
-                  name="star" 
-                  size={16} 
-                  color="#000" 
-                  style={{ marginRight: 5, marginTop: 2 }} 
-                />
+                <MaterialCommunityIcons name="star" size={16} color="#000" style={{ marginRight: 5, marginTop: 2 }} />
               )}
               <Text style={styles.methodText}>{data.check_method}</Text>
             </View>
+          </View>
+
+          {/* TAMPILKAN STANDARD CONDITION DAN GAMBAR TABEL JIKA ADA */}
+          <View style={styles.standardBox}>
+            <Text style={styles.labelSmall}>STANDARD CONDITION:</Text>
+            <Text style={styles.standardValueText}>{data.standard_condition || '-'}</Text>
+            
+            {data.standard_image_url && (
+              <Image 
+                source={{ uri: data.standard_image_url }} 
+                style={styles.standardImage} 
+                resizeMode="contain" 
+              />
+            )}
           </View>
 
           <View style={styles.stepActionRow}>
@@ -215,7 +240,6 @@ const ChatScreen = ({ navigation, route }) => {
               <Text style={styles.btnTextWhite}>Normal / Selesai</Text>
             </TouchableOpacity>
             
-            {/* LOGIKA: HANYA TAMPILKAN JIKA BUKAN LANGKAH TERAKHIR */}
             {!isLastStep && (
               <TouchableOpacity style={styles.btnTidak} onPress={() => showStep(index + 1)}>
                 <Text style={styles.btnTextBlack}>Masih Error</Text>
@@ -314,8 +338,13 @@ const styles = StyleSheet.create({
     stepBadgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
     stepHeaderText: { color: '#003366', fontWeight: 'bold' },
     causeDesc: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 12 },
+    imgContainer: { marginBottom: 15, backgroundColor: '#F0F0F0', padding: 5, borderRadius: 8 },
+    fullImage: { width: '100%', height: 200, borderRadius: 5 },
     methodBox: { backgroundColor: '#F5F5F5', padding: 10, borderRadius: 8, marginBottom: 10 },
     methodText: { fontSize: 13, color: '#444', flex: 1 },
+    standardBox: { backgroundColor: '#E8F5E9', padding: 10, borderRadius: 8, marginBottom: 15 },
+    standardValueText: { fontSize: 14, fontWeight: 'bold', color: '#2E7D32', marginBottom: 5 },
+    standardImage: { width: '100%', height: 140, marginTop: 10, backgroundColor: '#FFF', borderRadius: 5 },
     stepActionRow: { flexDirection: 'row' },
     btnYa: { flex: 1, backgroundColor: '#2E7D32', padding: 12, borderRadius: 8, marginRight: 5, alignItems: 'center' },
     btnTidak: { flex: 1, backgroundColor: '#FFD700', padding: 12, borderRadius: 8, marginLeft: 5, alignItems: 'center' },

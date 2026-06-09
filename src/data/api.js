@@ -1,5 +1,6 @@
 // src/data/api.js
 const IP_ADDRESS = "10.1.12.29"; // SESUAI IP WI-FI LAPTOP LO
+//const IP_ADDRESS = "172.20.10.2";
 //const IP_ADDRESS = "192.168.100.251";//
 const PORT = "5234";
 

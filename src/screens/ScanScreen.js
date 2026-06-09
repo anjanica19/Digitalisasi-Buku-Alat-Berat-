@@ -62,8 +62,8 @@ export default function ScanScreen({ navigation }) {
       );
 
       // 3. Kirim ke OCR Space API
-      // PENTING: Ganti dengan API Key pribadi lo (dapat dari email ocr.space)
-      const apiKey = "helloworld"; // GANTI PAKE KEY LO SENDIRI
+      // PENTING: Gunakan API Key yang valid agar proses scan lancar
+      const apiKey = "helloworld"; // GANTI DENGAN API KEY LO SENDIRI JIKA PUNYA
       
       const formData = new FormData();
       formData.append("base64Image", `data:image/jpg;base64,${manipulated.base64}`);
@@ -84,13 +84,13 @@ export default function ScanScreen({ navigation }) {
 
         if (validCode) {
           setDetectedCode(validCode);
-          // Langsung pindah ke halaman Chat untuk diagnosa
+          // NAVIGASI: Pindah ke ChatScreen pembawa kode hasil scan
           navigation.navigate('Chat', { scannedCode: validCode });
         } else {
-          Alert.alert("Gagal Scan", "Pola kode tidak dikenali. Pastikan teks terlihat jelas.");
+          Alert.alert("Gagal Scan", "Pola kode tidak dikenali. Pastikan teks terlihat jelas di dalam kotak.");
         }
       } else {
-        const errorMsg = result.ErrorMessage ? result.ErrorMessage[0] : "Limit API Habis atau Key Salah";
+        const errorMsg = result.ErrorMessage ? result.ErrorMessage[0] : "Terjadi kesalahan pada server OCR.";
         Alert.alert("Server Error", errorMsg);
       }
     } catch (error) {
@@ -117,7 +117,7 @@ export default function ScanScreen({ navigation }) {
           {isFocused && (
             <>
               <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
-              {/* UI Overlay Frame (Ditaruh di luar CameraView agar tidak warning) */}
+              {/* UI Overlay Frame */}
               <View style={styles.overlayContainer} pointerEvents="box-none">
                 <View style={styles.maskDark} />
                 <View style={styles.maskCenterRow}>
@@ -186,12 +186,10 @@ const styles = StyleSheet.create({
   maskDark: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
   maskCenterRow: { flexDirection: 'row', height: 130 },
   targetFrame: { width: width * 0.8, height: 130, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  // Frame Corners
   cornerTL: { position: 'absolute', top: 0, left: 0, width: 25, height: 25, borderTopWidth: 4, borderLeftWidth: 4, borderColor: '#FFD700' },
   cornerTR: { position: 'absolute', top: 0, right: 0, width: 25, height: 25, borderTopWidth: 4, borderRightWidth: 4, borderColor: '#FFD700' },
   cornerBL: { position: 'absolute', bottom: 0, left: 0, width: 25, height: 25, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: '#FFD700' },
   cornerBR: { position: 'absolute', bottom: 0, right: 0, width: 25, height: 25, borderBottomWidth: 4, borderRightWidth: 4, borderColor: '#FFD700' },
-  
   hintT: { color: '#FFD700', fontWeight: 'bold', fontSize: 11, letterSpacing: 1 },
   bottomPanel: { backgroundColor: '#111', padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   label: { color: '#444', fontSize: 10, fontWeight: 'bold', marginBottom: 10 },

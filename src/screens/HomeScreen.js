@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'; 
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ImageBackground, Dimensions, FlatList } from 'react-native'; // Ganti Image ke ImageBackground
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ImageBackground, Dimensions, FlatList } from 'react-native'; 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -12,7 +12,7 @@ const HomeScreen = ({ navigation }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef(null);
   
-  // DATA SLIDER DENGAN TEKS YANG SUDAH DISESUAIKAN
+  // DATA SLIDER TETAP SAMA
   const carouselData = [
     { id: '1', image: require('../../assets/slide1.jpg'), title: 'Energy Transformation', desc: 'Towards a Greener Future' }, 
     { id: '2', image: require('../../assets/slide2.jpg'), title: 'SDM Unggul & Terampil', desc: 'Workshop Alat Berat Standar Astra' },
@@ -57,15 +57,22 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* HEADER */}
+      {/* HEADER - BAGIAN YANG DIUBAH JADI DINAMIS */}
       <View style={styles.topRow}>
         <View style={styles.profileBox}>
           <View style={styles.avatar}>
             <Text style={styles.avatarTxt}>{getInitial(userData?.nama)}</Text>
           </View>
           <View>
-            <Text style={styles.hi}>Halo, {userData?.nama?.split(' ')[0] || 'User'}!</Text>
-            <Text style={styles.sub}>{userData?.nim || 'NIM'} • {userData?.kelas || 'Astra'}</Text>
+            <Text style={styles.hi}>
+                {userData?.role === 'lecturer' 
+                    ? `Halo, Dr. ${userData?.nama?.split(' ')[0]}!` 
+                    : `Halo, ${userData?.nama?.split(' ')[0] || 'User'}!`
+                }
+            </Text>
+            <Text style={styles.sub}>
+                {userData?.nim || 'NIM'} • {userData?.role === 'lecturer' ? 'Dosen' : (userData?.kelas || 'Astra')}
+            </Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
@@ -73,7 +80,7 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* BANNER SCAN */}
+      {/* BANNER SCAN - STRUKTUR TETAP */}
       <TouchableOpacity style={styles.scanBig} onPress={() => navigation.navigate('Scan')}>
         <View style={styles.iconCircle}>
           <MaterialCommunityIcons name="engine" size={32} color="#003366" />
@@ -84,7 +91,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </TouchableOpacity>
 
-      {/* --- SEKSI GAMBAR GERAK (SLIDER BACKGROUND) --- */}
+      {/* --- SEKSI GAMBAR GERAK (SLIDER BACKGROUND) - STRUKTUR TETAP --- */}
       <View style={styles.sliderContainer}>
         <FlatList
           ref={flatListRef}
@@ -104,7 +111,6 @@ const HomeScreen = ({ navigation }) => {
               style={styles.sliderImage} 
               imageStyle={{ borderRadius: 20 }}
             >
-              {/* Overlay untuk teks agar mudah dibaca */}
               <View style={styles.textOverlay}>
                 <Text style={styles.titleText}>{item.title}</Text>
                 <Text style={styles.descText}>{item.desc}</Text>
@@ -173,8 +179,6 @@ const styles = StyleSheet.create({
   iconCircle: { width: 55, height: 55, borderRadius: 15, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center' },
   scanT: { fontWeight: 'bold', fontSize: 18, color: '#003366' },
   scanS: { fontSize: 12, color: '#333', marginTop: 2, fontWeight: '500' },
-  
-  // STYLE SLIDER BACKGROUND
   sliderContainer: { marginTop: 10, marginBottom: 10 },
   sliderImage: { 
     width: ITEM_WIDTH, 
@@ -194,7 +198,6 @@ const styles = StyleSheet.create({
   },
   titleText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 18 },
   descText: { color: '#FFFFFF', fontSize: 12, marginTop: 4 },
-
   dotContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 10 },
   dot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 4 },
   secT: { fontSize: 12, fontWeight: '900', color: '#AAA', marginVertical: 15, letterSpacing: 1 },
