@@ -2,12 +2,161 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, StatusBar,
-  Keyboard, Alert, Image // Ditambahkan Image
+  Keyboard, Alert, Image, Modal, ScrollView, Dimensions
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import { API_ENDPOINTS } from '../data/api'; 
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ==========================================
+// KOMPONEN STEP CARD (UNTUK TIAP LANGKAH)
+// ==========================================
+const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
+  const [showCircuit, setShowCircuit] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedImg, setSelectedImg] = useState(null);
+  const [scale, setScale] = useState(1); // State untuk kontrol zoom manual
+
+  const handleOpenZoom = (uri) => {
+    setSelectedImg(uri);
+    setScale(1); // Reset zoom ke ukuran asli saat dibuka
+    setModalVisible(true);
+  };
+
+  const zoomIn = () => setScale(prev => Math.min(prev + 0.5, 4));
+  const zoomOut = () => setScale(prev => Math.max(prev - 0.5, 1));
+
+  return (
+    <View style={styles.stepCard}>
+      <View style={styles.stepHeader}>
+        <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>{index + 1}</Text></View>
+        <Text style={styles.stepHeaderText}>Langkah Perbaikan</Text>
+      </View>
+      
+      <Text style={styles.causeDesc}>{data.cause_description}</Text>
+      
+      {/* 1. TOMBOL LIHAT GAMBAR SIRKUIT */}
+      {data.image_url && (
+        <TouchableOpacity 
+          style={styles.btnCircuit} 
+          onPress={() => setShowCircuit(!showCircuit)}
+        >
+          <MaterialCommunityIcons 
+            name={showCircuit ? "eye-off" : "image-search"} 
+            size={18} 
+            color="#FFF" 
+          />
+          <Text style={styles.btnTextWhite}> {showCircuit ? "Tutup Gambar Sirkuit" : "Lihat Gambar Sirkuit"}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* GAMBAR SIRKUIT DENGAN BINGKAI */}
+      {showCircuit && data.image_url && (
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          style={styles.imageFrame} 
+          onPress={() => handleOpenZoom(data.image_url)}
+        >
+          <Text style={styles.labelFrame}>CIRCUIT DIAGRAM (Klik untuk Zoom)</Text>
+          <Image 
+            source={{ uri: data.image_url }} 
+            style={styles.fullImage} 
+            resizeMode="contain" 
+          />
+        </TouchableOpacity>
+      )}
+
+      <View style={styles.methodBox}>
+        <Text style={styles.labelSmall}>CHECK METHOD:</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 2 }}>
+          {data.special_method === 'iya' && (
+            <MaterialCommunityIcons name="star" size={16} color="#000" style={{ marginRight: 5, marginTop: 2 }} />
+          )}
+          <Text style={styles.methodText}>{data.check_method}</Text>
+        </View>
+      </View>
+
+      {/* STANDARD CONDITION DENGAN BINGKAI */}
+      <View style={styles.standardBox}>
+        <Text style={styles.labelSmall}>STANDARD CONDITION:</Text>
+        <Text style={styles.standardValueText}>{data.standard_condition || '-'}</Text>
+        
+        {data.standard_image_url && (
+          <TouchableOpacity 
+            activeOpacity={0.9} 
+            style={styles.imageFrameStandard} 
+            onPress={() => handleOpenZoom(data.standard_image_url)}
+          >
+            <Image 
+              source={{ uri: data.standard_image_url }} 
+              style={styles.standardImage} 
+              resizeMode="contain" 
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={styles.stepActionRow}>
+        <TouchableOpacity style={styles.btnYa} onPress={onFinish}>
+          <Text style={styles.btnTextWhite}>Normal / Selesai</Text>
+        </TouchableOpacity>
+        
+        {!isLastStep && (
+          <TouchableOpacity style={styles.btnTidak} onPress={onNext}>
+            <Text style={styles.btnTextBlack}>Masih Error</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* MODAL ZOOM (iOS & ANDROID OPTIMIZED) */}
+      <Modal visible={modalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalContainer}>
+          <SafeAreaView style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Image Viewer</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <MaterialCommunityIcons name="close-circle" size={35} color="#FFD700" />
+            </TouchableOpacity>
+          </SafeAreaView>
+
+          <View style={styles.zoomArea}>
+            <ScrollView
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              contentContainerStyle={styles.centerZoom}
+            >
+              <ScrollView horizontal>
+                <Image
+                  source={{ uri: selectedImg }}
+                  style={{
+                    width: SCREEN_WIDTH * scale,
+                    height: SCREEN_HEIGHT * 0.7 * scale,
+                  }}
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            </ScrollView>
+          </View>
+          
+          <View style={styles.zoomControls}>
+            <TouchableOpacity style={styles.zoomBtn} onPress={zoomOut}>
+               <MaterialCommunityIcons name="minus-circle" size={40} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.scaleText}>{Math.round(scale * 100)}%</Text>
+            <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn}>
+               <MaterialCommunityIcons name="plus-circle" size={40} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+// ==========================================
+// MAIN SCREEN
+// ==========================================
 const ChatScreen = ({ navigation, route }) => {
   const [searchText, setSearchText] = useState('');
   const [messages, setMessages] = useState([
@@ -20,7 +169,6 @@ const ChatScreen = ({ navigation, route }) => {
   const [userNama, setUserNama] = useState(null); 
   const flatListRef = useRef();
 
-  // AMBIL NIM & NAMA DARI STORAGE SAAT LAYAR DIBUKA
   useEffect(() => {
     const getSession = async () => {
       try {
@@ -30,9 +178,7 @@ const ChatScreen = ({ navigation, route }) => {
           setUserNim(userData.nim);
           setUserNama(userData.nama);
         }
-      } catch (e) { 
-        console.log("Gagal ambil session", e); 
-      }
+      } catch (e) { console.log("Gagal ambil session", e); }
     };
     getSession();
 
@@ -41,48 +187,29 @@ const ChatScreen = ({ navigation, route }) => {
     }
   }, [route.params?.scannedCode]);
 
-  // FUNGSI UNTUK SIMPAN KE DATABASE RIWAYAT (SINKRON DENGAN DOSEN)
   const saveToHistory = async (code, title, solution = null) => {
-    if (!userNim) {
-      console.log("History tidak disimpan: NIM tidak ditemukan");
-      return;
-    }
-
+    if (!userNim) return;
     try {
       const payload = {
-        FailureCode: code,
-        UserNim: userNim, 
-        UserNama: userNama, 
-        DiagnosisTitle: title,
+        FailureCode: code, UserNim: userNim, UserNama: userNama, DiagnosisTitle: title,
         TotalSteps: activeData?.causes?.length || activeData?.detail?.causes?.length || 0,
-        SolutionText: solution,
-        Notes: "Dicari melalui chat",
-        SessionId: currentSessionId 
+        SolutionText: solution, Notes: "Dicari melalui chat", SessionId: currentSessionId 
       };
-
       const response = await fetch(API_ENDPOINTS.saveHistory, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
       const result = await response.json();
-      
-      if (result.session_id) {
-        setCurrentSessionId(result.session_id);
-      }
-    } catch (error) {
-      console.error("Gagal simpan riwayat ke dosen:", error);
-    }
+      if (result.session_id) setCurrentSessionId(result.session_id);
+    } catch (error) { console.error("History Error:", error); }
   };
 
   const handleSearch = async (manualCode = null) => {
     const codeToSearch = manualCode || searchText;
     if (!codeToSearch.trim()) return;
-
     Keyboard.dismiss();
     const cleanQuery = codeToSearch.trim().toUpperCase();
-    
     setMessages((prev) => [...prev, { id: Date.now().toString(), text: cleanQuery, sender: 'user', type: 'text' }]);
     setSearchText('');
     setLoading(true);
@@ -92,40 +219,28 @@ const ChatScreen = ({ navigation, route }) => {
       const url = `${API_ENDPOINTS.failureCode}/${cleanQuery}`;
       const response = await fetch(url);
       const json = await response.json();
-
       if (response.ok && json) {
         const detailData = json.detail || json;
         setActiveData(json);
-        setMessages((prev) => [
-          ...prev,
-          { id: 'info-' + Date.now(), sender: 'bot', type: 'info_card', data: detailData },
-        ]);
-        
+        setMessages((prev) => [...prev, { id: 'info-' + Date.now(), sender: 'bot', type: 'info_card', data: detailData }]);
         saveToHistory(detailData.code, detailData.description, null);
-
         setTimeout(() => {
-          setMessages((prev) => [
-            ...prev,
-            { id: 'confirm-' + Date.now(), sender: 'bot', type: 'confirm_ask', text: 'Lihat langkah troubleshooting?' },
-          ]);
+          setMessages((prev) => [...prev, { id: 'confirm-' + Date.now(), sender: 'bot', type: 'confirm_ask', text: 'Lihat langkah troubleshooting?' }]);
         }, 800);
       } else {
         setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: `Kode "${cleanQuery}" tidak ditemukan.` }]);
       }
     } catch (error) {
       setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: "Koneksi server gagal." }]);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const showStep = (index) => {
     const causes = activeData?.causes || activeData?.detail?.causes;
     if (causes && index < causes.length) {
-      const stepData = causes[index];
       setMessages((prev) => [
         ...prev,
-        { id: `step-${index}-${Date.now()}`, sender: 'bot', type: 'step_card', data: stepData, currentIndex: index }
+        { id: `step-${index}-${Date.now()}`, sender: 'bot', type: 'step_card', data: causes[index], currentIndex: index }
       ]);
     } else {
       setMessages((prev) => [...prev, { id: 'end-' + Date.now(), sender: 'bot', type: 'text', text: 'Selesai. Semua langkah perbaikan sudah ditampilkan.' }]);
@@ -137,12 +252,9 @@ const ChatScreen = ({ navigation, route }) => {
       if (!text || text === '-') return <Text style={styles.valueYellow}>-</Text>;
       const points = text.split('|').map(item => item.trim()).filter(item => item !== "");
       return points.map((point, index) => (
-        <Text key={index} style={styles.valueYellow}>
-          {points.length > 1 ? `${index + 1}. ` : ""}{point}
-        </Text>
+        <Text key={index} style={styles.valueYellow}>{points.length > 1 ? `${index + 1}. ` : ""}{point}</Text>
       ));
     };
-
     return (
       <View style={styles.infoCard}>
         <View style={styles.cardHeaderRow}>
@@ -156,102 +268,17 @@ const ChatScreen = ({ navigation, route }) => {
           <View style={styles.gridCol}><Text style={styles.labelSmall}>COMPONENT:</Text><Text style={styles.valueWhite}>{data.component_in_charge || '-'}</Text></View>
           <View style={styles.gridCol}><Text style={styles.labelSmall}>CATEGORY:</Text><Text style={styles.valueWhite}>{data.category || '-'}</Text></View>
         </View>
-        
-        <View style={styles.dataSection}>
-          <Text style={styles.labelSmall}>PROBLEM APPEARS (GEJALA):</Text>
-          {renderProblemPoints(data.problem_appears)}
-        </View>
-
-        <View style={styles.dataSection}>
-          <Text style={styles.labelSmall}>ACTION OF CONTROLLER:</Text>
-          <Text style={styles.valueWhiteSmall}>{data.action_of_controller || '-'}</Text>
-        </View>
-
-        <View style={styles.dataSection}>
-          <Text style={styles.labelSmall}>CONTENTS OF TROUBLE:</Text>
-          <Text style={styles.valueWhiteSmall}>{data.contents_of_trouble || '-'}</Text>
-        </View>
-
-        <View style={styles.dataSection}>
-          <Text style={styles.labelSmall}>RELATED INFORMATION:</Text>
-          <Text style={styles.valueWhiteSmall}>{data.related_information || '-'}</Text>
-        </View>
+        <View style={styles.dataSection}><Text style={styles.labelSmall}>PROBLEM (GEJALA):</Text>{renderProblemPoints(data.problem_appears)}</View>
+        <View style={styles.dataSection}><Text style={styles.labelSmall}>ACTION OF CONTROLLER:</Text><Text style={styles.valueWhiteSmall}>{data.action_of_controller || '-'}</Text></View>
+        <View style={styles.dataSection}><Text style={styles.labelSmall}>CONTENTS OF TROUBLE:</Text><Text style={styles.valueWhiteSmall}>{data.contents_of_trouble || '-'}</Text></View>
+        <View style={styles.dataSection}><Text style={styles.labelSmall}>RELATED INFORMATION:</Text><Text style={styles.valueWhiteSmall}>{data.related_information || '-'}</Text></View>
       </View>
-    );
-  };
-
-  const StepCard = ({ data, index }) => {
-    const causes = activeData?.causes || activeData?.detail?.causes || [];
-    const isLastStep = index === causes.length - 1;
-
-    const handleFinishStep = () => {
-        const detailData = activeData.detail || activeData;
-        saveToHistory(detailData.code, detailData.description, data.cause_description);
-        Alert.alert("Berhasil", "Diagnosa selesai dan riwayat Anda telah dikirim ke Dosen.");
-    };
-
-    return (
-        <View style={styles.stepCard}>
-          <View style={styles.stepHeader}>
-            <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>{index + 1}</Text></View>
-            <Text style={styles.stepHeaderText}>Langkah Perbaikan</Text>
-          </View>
-          
-          <Text style={styles.causeDesc}>{data.cause_description}</Text>
-          
-          {/* TAMPILKAN GAMBAR SIRKUIT JIKA ADA URL DARI BACKEND */}
-          {data.image_url && (
-            <View style={styles.imgContainer}>
-              <Text style={styles.labelSmall}>CIRCUIT DIAGRAM REFERENCE:</Text>
-              <Image 
-                source={{ uri: data.image_url }} 
-                style={styles.fullImage} 
-                resizeMode="contain" 
-              />
-            </View>
-          )}
-
-          <View style={styles.methodBox}>
-            <Text style={styles.labelSmall}>CHECK METHOD:</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 2 }}>
-              {data.special_method === 'iya' && (
-                <MaterialCommunityIcons name="star" size={16} color="#000" style={{ marginRight: 5, marginTop: 2 }} />
-              )}
-              <Text style={styles.methodText}>{data.check_method}</Text>
-            </View>
-          </View>
-
-          {/* TAMPILKAN STANDARD CONDITION DAN GAMBAR TABEL JIKA ADA */}
-          <View style={styles.standardBox}>
-            <Text style={styles.labelSmall}>STANDARD CONDITION:</Text>
-            <Text style={styles.standardValueText}>{data.standard_condition || '-'}</Text>
-            
-            {data.standard_image_url && (
-              <Image 
-                source={{ uri: data.standard_image_url }} 
-                style={styles.standardImage} 
-                resizeMode="contain" 
-              />
-            )}
-          </View>
-
-          <View style={styles.stepActionRow}>
-            <TouchableOpacity style={styles.btnYa} onPress={handleFinishStep}>
-              <Text style={styles.btnTextWhite}>Normal / Selesai</Text>
-            </TouchableOpacity>
-            
-            {!isLastStep && (
-              <TouchableOpacity style={styles.btnTidak} onPress={() => showStep(index + 1)}>
-                <Text style={styles.btnTextBlack}>Masih Error</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
     );
   };
 
   const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
+    const causes = activeData?.causes || activeData?.detail?.causes || [];
     return (
       <View style={[styles.msgWrapper, isUser ? styles.userWrapper : styles.botWrapper]}>
         {!isUser && item.type === 'text' && (
@@ -265,7 +292,18 @@ const ChatScreen = ({ navigation, route }) => {
                <Text style={styles.btnTextWhite}>Ya, Tampilkan Langkah</Text>
              </TouchableOpacity>
            </View>
-         ) : item.type === 'step_card' ? <StepCard data={item.data} index={item.currentIndex} /> : (
+         ) : item.type === 'step_card' ? (
+           <StepCard 
+              data={item.data} index={item.currentIndex} 
+              isLastStep={item.currentIndex === causes.length - 1}
+              onNext={() => showStep(item.currentIndex + 1)}
+              onFinish={() => {
+                  const d = activeData.detail || activeData;
+                  saveToHistory(d.code, d.description, item.data.cause_description);
+                  Alert.alert("Berhasil", "Diagnosa selesai dan riwayat Anda telah dikirim ke Dosen.");
+              }}
+           />
+         ) : (
            <View style={[styles.bubble, isUser ? styles.userBubble : styles.botBubble]}>
              <Text style={isUser ? styles.userText : styles.botText}>{item.text}</Text>
            </View>
@@ -282,14 +320,10 @@ const ChatScreen = ({ navigation, route }) => {
         <Text style={styles.headerTitle}>TAB Bot Diagnostic</Text>
         <View style={{ width: 28 }} />
       </View>
-
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.chatContent}
+          ref={flatListRef} data={messages} keyExtractor={(item) => item.id}
+          renderItem={renderMessage} contentContainerStyle={styles.chatContent}
           onContentSizeChange={() => flatListRef.current.scrollToEnd({ animated: true })}
         />
         {loading && <ActivityIndicator size="small" color="#003366" style={{ marginBottom: 10 }} />}
@@ -338,13 +372,18 @@ const styles = StyleSheet.create({
     stepBadgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
     stepHeaderText: { color: '#003366', fontWeight: 'bold' },
     causeDesc: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 12 },
-    imgContainer: { marginBottom: 15, backgroundColor: '#F0F0F0', padding: 5, borderRadius: 8 },
-    fullImage: { width: '100%', height: 200, borderRadius: 5 },
+    
+    // STYLE KHUSUS BINGKAI & TOMBOL
+    btnCircuit: { backgroundColor: '#003366', padding: 10, borderRadius: 8, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    imageFrame: { borderWidth: 2, borderColor: '#003366', borderRadius: 10, padding: 5, backgroundColor: '#FFF', marginBottom: 15, overflow: 'hidden' },
+    imageFrameStandard: { borderWidth: 1, borderColor: '#2E7D32', borderRadius: 8, padding: 4, backgroundColor: '#FFF', marginTop: 8 },
+    labelFrame: { color: '#003366', fontSize: 9, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
+    fullImage: { width: '100%', height: 180, borderRadius: 5 },
     methodBox: { backgroundColor: '#F5F5F5', padding: 10, borderRadius: 8, marginBottom: 10 },
     methodText: { fontSize: 13, color: '#444', flex: 1 },
     standardBox: { backgroundColor: '#E8F5E9', padding: 10, borderRadius: 8, marginBottom: 15 },
     standardValueText: { fontSize: 14, fontWeight: 'bold', color: '#2E7D32', marginBottom: 5 },
-    standardImage: { width: '100%', height: 140, marginTop: 10, backgroundColor: '#FFF', borderRadius: 5 },
+    standardImage: { width: '100%', height: 130, backgroundColor: '#FFF', borderRadius: 5 },
     stepActionRow: { flexDirection: 'row' },
     btnYa: { flex: 1, backgroundColor: '#2E7D32', padding: 12, borderRadius: 8, marginRight: 5, alignItems: 'center' },
     btnTidak: { flex: 1, backgroundColor: '#FFD700', padding: 12, borderRadius: 8, marginLeft: 5, alignItems: 'center' },
@@ -353,6 +392,16 @@ const styles = StyleSheet.create({
     inputArea: { flexDirection: 'row', padding: 12, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#EEE' },
     textInput: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 25, paddingHorizontal: 20, height: 45, borderWidth: 1, borderColor: '#DDD' },
     sendBtn: { backgroundColor: '#003366', width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+    
+    // MODAL ZOOM STYLE (FIX UNTUK ANDROID & IOS)
+    modalContainer: { flex: 1, backgroundColor: '#000' },
+    modalHeader: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalTitle: { color: '#FFF', fontWeight: 'bold' },
+    zoomArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    centerZoom: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
+    zoomControls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
+    zoomBtn: { padding: 10 },
+    scaleText: { color: '#FFF', fontWeight: 'bold', marginHorizontal: 20, fontSize: 16 }
 });
 
 export default ChatScreen;
