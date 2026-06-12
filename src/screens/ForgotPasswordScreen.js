@@ -40,20 +40,22 @@ const PasswordChecklist = ({ password }) => (
 );
 
 // ─── Step Indicator ────────────────────────────────────────────────
-const STEP_LABELS = ['Find Account', 'Verify & Reset'];
+const STEP_LABELS = ['Find Account', 'Security Questions', 'New Password'];
 
 const StepIndicator = ({ current }) => (
   <View style={styles.stepContainer}>
     <View style={styles.stepRow}>
-      {[1, 2].map(s => (
+      {[1, 2, 3].map(s => (
         <View key={s} style={styles.stepGroup}>
           <View style={[styles.stepDot, current >= s ? styles.stepDotActive : styles.stepDotInactive]}>
             {current > s
-              ? <MaterialCommunityIcons name="check" size={14} color={NAVY} />
+              ? <MaterialCommunityIcons name="check" size={13} color={NAVY} />
               : <Text style={[styles.stepNum, { color: current === s ? NAVY : '#AAA' }]}>{s}</Text>
             }
           </View>
-          {s < 2 && <View style={[styles.stepLine, current > s ? styles.stepLineActive : styles.stepLineInactive]} />}
+          {s < 3 && (
+            <View style={[styles.stepLine, current > s ? styles.stepLineActive : styles.stepLineInactive]} />
+          )}
         </View>
       ))}
     </View>
@@ -61,11 +63,36 @@ const StepIndicator = ({ current }) => (
   </View>
 );
 
+// ─── User Card (reusable) ─────────────────────────────────────────
+const UserCard = ({ nama, nim, verified = false }) => (
+  <View style={styles.userCard}>
+    <View style={styles.userAvatar}>
+      <Text style={styles.userAvatarText}>
+        {nama ? nama.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+      </Text>
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={styles.userCardName}>{nama}</Text>
+      <Text style={styles.userCardNim}>ID: {nim}</Text>
+    </View>
+    <View style={[styles.verifiedBadge, verified && styles.verifiedBadgeGreen]}>
+      <MaterialCommunityIcons
+        name={verified ? 'shield-check' : 'check-circle'}
+        size={15}
+        color={verified ? GREEN : '#2E7D32'}
+      />
+      <Text style={[styles.verifiedText, verified && { color: GREEN }]}>
+        {verified ? 'Verified' : 'Found'}
+      </Text>
+    </View>
+  </View>
+);
+
 // ═════════════════════════════════════════════════════════════════
 // SCREEN UTAMA
 // ═════════════════════════════════════════════════════════════════
 const ForgotPasswordScreen = ({ navigation }) => {
-  const [step, setStep]     = useState(1);
+  const [step, setStep]       = useState(1);
   const [loading, setLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -73,13 +100,19 @@ const ForgotPasswordScreen = ({ navigation }) => {
   const [nim, setNim] = useState('');
 
   // Data dari API
-  const [namaUser, setNamaUser] = useState('');
-  const [questions, setQuestions] = useState({ q1: { id: 0, text: '' }, q2: { id: 0, text: '' }, q3: { id: 0, text: '' } });
+  const [namaUser, setNamaUser]   = useState('');
+  const [questions, setQuestions] = useState({
+    q1: { id: 0, text: '' },
+    q2: { id: 0, text: '' },
+    q3: { id: 0, text: '' },
+  });
 
-  // Step 2
+  // Step 2 — jawaban security questions
   const [a1, setA1] = useState('');
   const [a2, setA2] = useState('');
   const [a3, setA3] = useState('');
+
+  // Step 3 — password baru
   const [newPass, setNewPass]         = useState('');
   const [confirmPass, setConfirmPass] = useState('');
   const [showNew, setShowNew]         = useState(false);
@@ -87,6 +120,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   const passwordValid = passwordRules.every(r => r.test(newPass));
 
+  // ── Animasi transisi ───────────────────────────────────────────
   const goToStep = next => {
     Animated.sequence([
       Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
@@ -95,8 +129,13 @@ const ForgotPasswordScreen = ({ navigation }) => {
     setTimeout(() => setStep(next), 120);
   };
 
+  const handleBack = () => {
+    if (step === 1) navigation.goBack();
+    else goToStep(step - 1);
+  };
+
   // ════════════════════════════════════════════════════════════════
-  // STEP 1: Cari akun
+  // STEP 1: Cari akun by NIM
   // ════════════════════════════════════════════════════════════════
   const handleFindAccount = async () => {
     if (!nim.trim()) { Alert.alert('Warning', 'Student ID / Lecturer ID is required!'); return; }
@@ -128,29 +167,39 @@ const ForgotPasswordScreen = ({ navigation }) => {
   };
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 2: Verifikasi + reset password
+  // STEP 2: Verifikasi jawaban security questions
   // ════════════════════════════════════════════════════════════════
-  const handleVerifyReset = async () => {
+  const handleVerifyAnswers = () => {
     if (!a1.trim() || !a2.trim() || !a3.trim()) {
-      Alert.alert('Warning', 'All security answers are required.'); return;
+      Alert.alert('Warning', 'All security answers are required.');
+      return;
     }
+    // Lanjut ke step 3 — verifikasi jawaban dilakukan saat submit akhir
+    goToStep(3);
+  };
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 3: Submit reset password
+  // ════════════════════════════════════════════════════════════════
+  const handleResetPassword = async () => {
     if (!passwordValid) {
-      Alert.alert('Warning', 'Password does not meet all requirements.'); return;
+      Alert.alert('Warning', 'Password does not meet all requirements.');
+      return;
     }
     if (newPass !== confirmPass) {
-      Alert.alert('Warning', 'Passwords do not match.'); return;
+      Alert.alert('Warning', 'Passwords do not match.');
+      return;
     }
-
     setLoading(true);
     try {
       const res    = await fetch(API_ENDPOINTS.verifyReset, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          nim: nim.trim(),
-          a1Id: questions.q1.id, a1: a1.trim(),
-          a2Id: questions.q2.id, a2: a2.trim(),
-          a3Id: questions.q3.id, a3: a3.trim(),
+          nim:             nim.trim(),
+          a1Id:            questions.q1.id, a1: a1.trim(),
+          a2Id:            questions.q2.id, a2: a2.trim(),
+          a3Id:            questions.q3.id, a3: a3.trim(),
           newPassword:     newPass,
           confirmPassword: confirmPass,
         }),
@@ -164,7 +213,15 @@ const ForgotPasswordScreen = ({ navigation }) => {
           [{ text: 'Sign In Now', onPress: () => navigation.replace('Login') }]
         );
       } else {
-        Alert.alert('Verification Failed', result.message || 'Incorrect answers.');
+        // Kalau jawaban salah, balik ke step 2
+        Alert.alert(
+          'Verification Failed',
+          result.message || 'Incorrect answers. Please go back and try again.',
+          [
+            { text: 'Try Again', onPress: () => goToStep(2) },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
       }
     } catch {
       Alert.alert('Connection Error', 'Unable to connect to server.');
@@ -185,10 +242,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
       >
         {/* HEADER */}
         <View style={styles.headerSection}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => step === 1 ? navigation.goBack() : goToStep(1)}
-          >
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
             <MaterialCommunityIcons name="chevron-left" size={28} color={NAVY} />
           </TouchableOpacity>
           <View style={styles.iconBox}>
@@ -198,11 +252,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
           <Text style={styles.subtitle}>TAB Troubleshoot · Polytechnic Astra</Text>
         </View>
 
+        {/* STEP INDICATOR */}
         <StepIndicator current={step} />
 
         <Animated.View style={{ opacity: fadeAnim }}>
 
-          {/* ══ STEP 1 ══════════════════════════════════════════════ */}
+          {/* ══ STEP 1: FIND ACCOUNT ════════════════════════════════ */}
           {step === 1 && (
             <View style={styles.card}>
               <Text style={styles.cardDesc}>
@@ -226,7 +281,8 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
               <TouchableOpacity
                 style={[styles.primaryBtn, { opacity: loading ? 0.7 : 1, marginTop: 24 }]}
-                onPress={handleFindAccount} disabled={loading}
+                onPress={handleFindAccount}
+                disabled={loading}
               >
                 {loading ? <ActivityIndicator color={NAVY} /> : (
                   <View style={styles.btnInner}>
@@ -243,27 +299,11 @@ const ForgotPasswordScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* ══ STEP 2 ══════════════════════════════════════════════ */}
+          {/* ══ STEP 2: SECURITY QUESTIONS ══════════════════════════ */}
           {step === 2 && (
             <View>
-              {/* User card */}
-              <View style={styles.userCard}>
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {namaUser ? namaUser.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U'}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.userCardName}>{namaUser}</Text>
-                  <Text style={styles.userCardNim}>ID: {nim}</Text>
-                </View>
-                <View style={styles.verifiedBadge}>
-                  <MaterialCommunityIcons name="check-circle" size={15} color={GREEN} />
-                  <Text style={styles.verifiedText}>Found</Text>
-                </View>
-              </View>
+              <UserCard nama={namaUser} nim={nim} verified={false} />
 
-              {/* Security Questions */}
               <View style={styles.card}>
                 <View style={styles.sectionHeader}>
                   <MaterialCommunityIcons name="shield-lock-outline" size={18} color={NAVY} />
@@ -280,7 +320,9 @@ const ForgotPasswordScreen = ({ navigation }) => {
                 ].map((item, i) => (
                   <View key={i} style={styles.questionBlock}>
                     <View style={styles.questionLabelRow}>
-                      <View style={styles.qNum}><Text style={styles.qNumText}>{i + 1}</Text></View>
+                      <View style={styles.qNum}>
+                        <Text style={styles.qNumText}>{i + 1}</Text>
+                      </View>
                       <Text style={styles.questionText}>{item.q.text}</Text>
                     </View>
                     <View style={styles.inputWrapper}>
@@ -299,16 +341,32 @@ const ForgotPasswordScreen = ({ navigation }) => {
                 <View style={styles.hintBox}>
                   <MaterialCommunityIcons name="information-outline" size={14} color="#555" />
                   <Text style={styles.hintBoxText}>
-                    Answers are not case-sensitive.
+                    Answers are not case-sensitive. "Jakarta" and "jakarta" are treated the same.
                   </Text>
                 </View>
               </View>
 
-              {/* New Password */}
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleVerifyAnswers}
+              >
+                <View style={styles.btnInner}>
+                  <Text style={styles.primaryBtnText}>NEXT</Text>
+                  <MaterialCommunityIcons name="arrow-right" size={18} color={NAVY} />
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ══ STEP 3: NEW PASSWORD ════════════════════════════════ */}
+          {step === 3 && (
+            <View>
+              <UserCard nama={namaUser} nim={nim} verified={true} />
+
               <View style={styles.card}>
                 <View style={styles.sectionHeader}>
                   <MaterialCommunityIcons name="lock-outline" size={18} color={NAVY} />
-                  <Text style={styles.sectionTitle}>New Password</Text>
+                  <Text style={styles.sectionTitle}>Set New Password</Text>
                 </View>
 
                 {/* Read-only auto-fill */}
@@ -320,7 +378,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
                 </View>
 
                 <Text style={styles.label}>Student ID / Lecturer ID</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: '#F0F0F0', marginBottom: 16 }]}>
+                <View style={[styles.inputWrapper, { backgroundColor: '#F0F0F0', marginBottom: 20 }]}>
                   <MaterialCommunityIcons name="account-hard-hat-outline" size={18} color="#AAA" style={styles.inputIcon} />
                   <TextInput style={[styles.input, { color: '#AAA' }]} value={nim} editable={false} />
                   <MaterialCommunityIcons name="lock-outline" size={14} color="#CCC" />
@@ -338,13 +396,19 @@ const ForgotPasswordScreen = ({ navigation }) => {
                     secureTextEntry={!showNew}
                   />
                   <TouchableOpacity onPress={() => setShowNew(p => !p)}>
-                    <MaterialCommunityIcons name={showNew ? 'eye-off-outline' : 'eye-outline'} size={20} color="#999" />
+                    <MaterialCommunityIcons
+                      name={showNew ? 'eye-off-outline' : 'eye-outline'}
+                      size={20} color="#999"
+                    />
                   </TouchableOpacity>
                 </View>
                 <PasswordChecklist password={newPass} />
 
                 <Text style={[styles.label, { marginTop: 8 }]}>Confirm New Password</Text>
-                <View style={[styles.inputWrapper, confirmPass.length > 0 && newPass !== confirmPass ? styles.inputError : null]}>
+                <View style={[
+                  styles.inputWrapper,
+                  confirmPass.length > 0 && newPass !== confirmPass ? styles.inputError : null
+                ]}>
                   <MaterialCommunityIcons name="lock-check-outline" size={20} color={NAVY} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
@@ -368,11 +432,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
               <TouchableOpacity
                 style={[styles.primaryBtn, { opacity: loading ? 0.7 : 1 }]}
-                onPress={handleVerifyReset} disabled={loading}
+                onPress={handleResetPassword}
+                disabled={loading}
               >
                 {loading ? <ActivityIndicator color={NAVY} /> : (
                   <View style={styles.btnInner}>
-                    <Text style={styles.primaryBtnText}>VERIFY & RESET PASSWORD</Text>
+                    <Text style={styles.primaryBtnText}>RESET PASSWORD</Text>
                     <MaterialCommunityIcons name="shield-check" size={18} color={NAVY} />
                   </View>
                 )}
@@ -394,44 +459,53 @@ const styles = StyleSheet.create({
   iconBox:          { backgroundColor: NAVY, padding: 18, borderRadius: 25, marginBottom: 14, elevation: 5 },
   title:            { fontSize: 24, fontWeight: 'bold', color: NAVY, letterSpacing: 0.5 },
   subtitle:         { fontSize: 13, color: '#666', marginTop: 4 },
+  // Step indicator
   stepContainer:    { marginBottom: 20 },
   stepRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   stepGroup:        { flexDirection: 'row', alignItems: 'center' },
   stepDot:          { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   stepDotActive:    { backgroundColor: GOLD },
   stepDotInactive:  { backgroundColor: '#F0F0F0', borderWidth: 1, borderColor: '#DDD' },
-  stepNum:          { fontSize: 14, fontWeight: 'bold' },
-  stepLine:         { width: 80, height: 2, marginHorizontal: 6 },
+  stepNum:          { fontSize: 13, fontWeight: 'bold' },
+  stepLine:         { width: 44, height: 2, marginHorizontal: 4 },
   stepLineActive:   { backgroundColor: GOLD },
   stepLineInactive: { backgroundColor: '#DDD' },
   stepLabel:        { textAlign: 'center', fontSize: 13, fontWeight: 'bold', color: NAVY },
-  card:             { backgroundColor: '#FFF', borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', elevation: 1 },
-  cardDesc:         { fontSize: 13, color: '#666', lineHeight: 20, marginBottom: 16 },
-  sectionHeader:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  sectionTitle:     { fontSize: 14, fontWeight: 'bold', color: NAVY },
+  // User card
   userCard:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', gap: 12, elevation: 1 },
   userAvatar:       { width: 44, height: 44, borderRadius: 22, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center' },
   userAvatarText:   { color: GOLD, fontWeight: 'bold', fontSize: 15 },
   userCardName:     { fontWeight: 'bold', color: NAVY, fontSize: 14 },
   userCardNim:      { color: '#666', fontSize: 12 },
   verifiedBadge:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, gap: 4 },
-  verifiedText:     { fontSize: 11, fontWeight: 'bold', color: GREEN },
+  verifiedBadgeGreen: { backgroundColor: '#C8E6C9' },
+  verifiedText:     { fontSize: 11, fontWeight: 'bold', color: '#2E7D32' },
+  // Card
+  card:             { backgroundColor: '#FFF', borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', elevation: 1 },
+  cardDesc:         { fontSize: 13, color: '#666', lineHeight: 20, marginBottom: 16 },
+  sectionHeader:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  sectionTitle:     { fontSize: 14, fontWeight: 'bold', color: NAVY },
+  // Questions
   questionBlock:    { marginBottom: 16 },
   questionLabelRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
   qNum:             { width: 24, height: 24, borderRadius: 12, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
   qNumText:         { color: GOLD, fontWeight: 'bold', fontSize: 12 },
   questionText:     { flex: 1, fontSize: 13, color: '#333', fontWeight: '600', lineHeight: 20 },
+  // Form
   label:            { marginBottom: 7, fontWeight: 'bold', color: NAVY, fontSize: 13 },
   inputWrapper:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: '#EEE', marginBottom: 4 },
   inputError:       { borderColor: RED },
   inputIcon:        { marginRight: 10 },
   input:            { flex: 1, paddingVertical: 14, fontSize: 15, color: '#000' },
   errorText:        { fontSize: 11, color: RED, marginBottom: 10, marginLeft: 4 },
+  // Password checklist
   checklist:        { marginVertical: 10, gap: 6 },
   checkRow:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkText:        { fontSize: 13 },
+  // Hint
   hintBox:          { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: '#FFF9C4', borderRadius: 10, padding: 10, marginTop: 4 },
   hintBoxText:      { flex: 1, fontSize: 11, color: '#555', lineHeight: 16 },
+  // Buttons
   primaryBtn:       { backgroundColor: GOLD, padding: 18, borderRadius: 15, alignItems: 'center', marginBottom: 8 },
   primaryBtnText:   { color: NAVY, fontWeight: '900', fontSize: 15 },
   btnInner:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
