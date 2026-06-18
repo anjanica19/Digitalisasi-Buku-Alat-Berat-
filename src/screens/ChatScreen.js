@@ -11,6 +11,31 @@ import { API_ENDPOINTS } from '../data/api';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ==========================================
+// HELPER: KOMPONEN GAMBAR DENGAN TINGGI OTOMATIS
+// ==========================================
+const AutoHeightImage = ({ uri, style }) => {
+  const [aspectRatio, setAspectRatio] = useState(16 / 9); // Default rasio awal
+
+  useEffect(() => {
+    if (uri) {
+      Image.getSize(uri, (width, height) => {
+        if (width && height) {
+          setAspectRatio(width / height);
+        }
+      }, (error) => console.log('Gagal mendapatkan ukuran gambar:', error));
+    }
+  }, [uri]);
+
+  return (
+    <Image 
+      source={{ uri }} 
+      style={[style, { aspectRatio }]} 
+      resizeMode="contain" 
+    />
+  );
+};
+
+// ==========================================
 // KOMPONEN STEP CARD (UNTUK TIAP LANGKAH)
 // ==========================================
 const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
@@ -52,7 +77,7 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
         </TouchableOpacity>
       )}
 
-      {/* GAMBAR SIRKUIT DENGAN BINGKAI */}
+      {/* GAMBAR SIRKUIT DENGAN BINGKAI DINAMIS */}
       {showCircuit && data.image_url && (
         <TouchableOpacity 
           activeOpacity={0.9} 
@@ -60,10 +85,9 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
           onPress={() => handleOpenZoom(data.image_url)}
         >
           <Text style={styles.labelFrame}>CIRCUIT DIAGRAM (Klik untuk Zoom)</Text>
-          <Image 
-            source={{ uri: data.image_url }} 
+          <AutoHeightImage 
+            uri={data.image_url} 
             style={styles.fullImage} 
-            resizeMode="contain" 
           />
         </TouchableOpacity>
       )}
@@ -78,7 +102,7 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
         </View>
       </View>
 
-      {/* STANDARD CONDITION DENGAN BINGKAI */}
+      {/* STANDARD CONDITION DENGAN BINGKAI DINAMIS */}
       <View style={styles.standardBox}>
         <Text style={styles.labelSmall}>STANDARD CONDITION:</Text>
         <Text style={styles.standardValueText}>{data.standard_condition || '-'}</Text>
@@ -89,10 +113,9 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
             style={styles.imageFrameStandard} 
             onPress={() => handleOpenZoom(data.standard_image_url)}
           >
-            <Image 
-              source={{ uri: data.standard_image_url }} 
+            <AutoHeightImage 
+              uri={data.standard_image_url} 
               style={styles.standardImage} 
-              resizeMode="contain" 
             />
           </TouchableOpacity>
         )}
@@ -375,15 +398,15 @@ const styles = StyleSheet.create({
     
     // STYLE KHUSUS BINGKAI & TOMBOL
     btnCircuit: { backgroundColor: '#003366', padding: 10, borderRadius: 8, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    imageFrame: { borderWidth: 2, borderColor: '#003366', borderRadius: 10, padding: 5, backgroundColor: '#FFF', marginBottom: 15, overflow: 'hidden' },
-    imageFrameStandard: { borderWidth: 1, borderColor: '#2E7D32', borderRadius: 8, padding: 4, backgroundColor: '#FFF', marginTop: 8 },
+    imageFrame: { borderWidth: 2, borderColor: '#003366', borderRadius: 10, padding: 5, backgroundColor: '#FFF', marginBottom: 15, overflow: 'hidden', alignSelf: 'stretch' },
+    imageFrameStandard: { borderWidth: 1, borderColor: '#2E7D32', borderRadius: 8, padding: 4, backgroundColor: '#FFF', marginTop: 8, alignSelf: 'stretch' },
     labelFrame: { color: '#003366', fontSize: 9, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
-    fullImage: { width: '100%', height: 180, borderRadius: 5 },
+    fullImage: { width: '100%', borderRadius: 5 },
     methodBox: { backgroundColor: '#F5F5F5', padding: 10, borderRadius: 8, marginBottom: 10 },
     methodText: { fontSize: 13, color: '#444', flex: 1 },
     standardBox: { backgroundColor: '#E8F5E9', padding: 10, borderRadius: 8, marginBottom: 15 },
     standardValueText: { fontSize: 14, fontWeight: 'bold', color: '#2E7D32', marginBottom: 5 },
-    standardImage: { width: '100%', height: 130, backgroundColor: '#FFF', borderRadius: 5 },
+    standardImage: { width: '100%', backgroundColor: '#FFF', borderRadius: 5 },
     stepActionRow: { flexDirection: 'row' },
     btnYa: { flex: 1, backgroundColor: '#2E7D32', padding: 12, borderRadius: 8, marginRight: 5, alignItems: 'center' },
     btnTidak: { flex: 1, backgroundColor: '#FFD700', padding: 12, borderRadius: 8, marginLeft: 5, alignItems: 'center' },

@@ -9,7 +9,7 @@ import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImageManipulator from 'expo-image-manipulator'; 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ScanScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -18,7 +18,6 @@ export default function ScanScreen({ navigation }) {
   const cameraRef = useRef(null);
   const isFocused = useIsFocused(); 
 
-  // UI State: Izin Kamera
   if (!permission) return <View style={styles.container} />;
   if (!permission.granted) {
     return (
@@ -32,12 +31,14 @@ export default function ScanScreen({ navigation }) {
     );
   }
 
-  // Fungsi Filter Teks: Mencari pola kode error (Huruf-Angka)
+  // PERBAIKAN REGEX: Menghapus spasi dulu baru di cek polanya
   const validateAndExtractCode = (rawText) => {
-    // Mencari pola 1-3 huruf kapital diikuti 2-5 angka (Contoh: CA145, E10, DW202)
-    const regex = /\b([A-Z]{1,3}\d{2,5})\b/i; 
-    const matches = rawText.match(regex);
-    return (matches) ? matches[0].toUpperCase() : null;
+    // Hapus semua spasi dan baris baru agar "CA 145" jadi "CA145"
+    const cleanText = rawText.replace(/\s+/g, '').toUpperCase();
+    // Mencari pola: Huruf (1-3) diikuti Angka (1-5)
+    const regex = /([A-Z]{1,3}\d{1,5})/; 
+    const matches = cleanText.match(regex);
+    return (matches) ? matches[0] : null;
   };
 
   const handleScan = async () => {
@@ -46,14 +47,22 @@ export default function ScanScreen({ navigation }) {
     try {
       setLoading(true);
       
-      // 1. Ambil Foto
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
+      // 1. Ambil Foto dengan kualitas menengah agar upload cepat
+      const photo = await cameraRef.current.takePictureAsync({ 
+        quality: 0.7,
+        skipProcessing: false 
+      });
 
-      // 2. Crop Foto (Hanya mengambil area di dalam kotak kuning)
-      const cropWidth = photo.width * 0.75; 
-      const cropHeight = photo.height * 0.15;
+      // 2. PERBAIKAN CROPPING: 
+      // Kita hitung rasio perbandingan ukuran foto asli vs ukuran layar UI
+      const factorX = photo.width / SCREEN_WIDTH;
+      const factorY = photo.height / SCREEN_HEIGHT;
+
+      // Sesuaikan dengan posisi targetFrame di style
+      const cropWidth = (SCREEN_WIDTH * 0.8) * factorX;
+      const cropHeight = 130 * factorY;
       const originX = (photo.width - cropWidth) / 2;
-      const originY = (photo.height - cropHeight) / 2.5;
+      const originY = (photo.height / 2.5) - (cropHeight / 2); // Menyesuaikan posisi tengah box
 
       const manipulated = await ImageManipulator.manipulateAsync(
         photo.uri,
@@ -62,14 +71,15 @@ export default function ScanScreen({ navigation }) {
       );
 
       // 3. Kirim ke OCR Space API
-      // PENTING: Gunakan API Key yang valid agar proses scan lancar
-      const apiKey = "helloworld"; // GANTI DENGAN API KEY LO SENDIRI JIKA PUNYA
+      // SARAN: Daftar free API Key di ocr.space (gratis) agar tidak limit
+      const apiKey = "K84623724388957"; // Ini contoh key gratis, sebaiknya ganti punya sendiri
       
       const formData = new FormData();
       formData.append("base64Image", `data:image/jpg;base64,${manipulated.base64}`);
       formData.append("apikey", apiKey);
+      formData.append("language", "eng");
       formData.append("isOverlayRequired", "false");
-      formData.append("OCREngine", "1"); 
+      formData.append("OCREngine", "2"); // Engine 2 biasanya lebih cepat untuk teks pendek
 
       const response = await fetch("https://api.ocr.space/parse/image", {
         method: "POST",
@@ -80,21 +90,24 @@ export default function ScanScreen({ navigation }) {
 
       if (result.OCRExitCode === 1) {
         const fullText = result.ParsedResults[0].ParsedText;
+        console.log("OCR Result:", fullText); // Cek di console log hasil mentahnya
+        
         const validCode = validateAndExtractCode(fullText);
 
         if (validCode) {
           setDetectedCode(validCode);
-          // NAVIGASI: Pindah ke ChatScreen pembawa kode hasil scan
-          navigation.navigate('Chat', { scannedCode: validCode });
+          Alert.alert("Berhasil", `Kode terdeteksi: ${validCode}`, [
+            { text: "Lanjutkan", onPress: () => navigation.navigate('Chat', { scannedCode: validCode }) }
+          ]);
         } else {
-          Alert.alert("Gagal Scan", "Pola kode tidak dikenali. Pastikan teks terlihat jelas di dalam kotak.");
+          Alert.alert("Gagal", "Kode tidak terbaca jelas. Pastikan hanya kode yang ada di dalam kotak kuning.");
         }
       } else {
-        const errorMsg = result.ErrorMessage ? result.ErrorMessage[0] : "Terjadi kesalahan pada server OCR.";
-        Alert.alert("Server Error", errorMsg);
+        Alert.alert("Gagal Scan", "Pastikan pencahayaan cukup dan teks terlihat jelas.");
       }
     } catch (error) {
-      Alert.alert("Koneksi Error", "Cek koneksi internet anda.");
+      console.log(error);
+      Alert.alert("Error", "Gagal menghubungi server OCR. Cek koneksi internet.");
     } finally {
       setLoading(false);
     }
@@ -103,7 +116,6 @@ export default function ScanScreen({ navigation }) {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <MaterialCommunityIcons name="chevron-left" size={35} color="white" />
@@ -112,12 +124,10 @@ export default function ScanScreen({ navigation }) {
           <View style={{width: 35}} />
         </View>
 
-        {/* CAMERA AREA */}
         <View style={styles.cameraArea}>
           {isFocused && (
             <>
               <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
-              {/* UI Overlay Frame */}
               <View style={styles.overlayContainer} pointerEvents="box-none">
                 <View style={styles.maskDark} />
                 <View style={styles.maskCenterRow}>
@@ -137,7 +147,6 @@ export default function ScanScreen({ navigation }) {
           )}
         </View>
 
-        {/* BOTTOM PANEL */}
         <View style={styles.bottomPanel}>
           <Text style={styles.label}>HASIL DETEKSI / INPUT MANUAL:</Text>
           <View style={styles.inputRow}>
@@ -185,7 +194,7 @@ const styles = StyleSheet.create({
   overlayContainer: { ...StyleSheet.absoluteFillObject },
   maskDark: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
   maskCenterRow: { flexDirection: 'row', height: 130 },
-  targetFrame: { width: width * 0.8, height: 130, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  targetFrame: { width: SCREEN_WIDTH * 0.8, height: 130, justifyContent: 'center', alignItems: 'center', position: 'relative' },
   cornerTL: { position: 'absolute', top: 0, left: 0, width: 25, height: 25, borderTopWidth: 4, borderLeftWidth: 4, borderColor: '#FFD700' },
   cornerTR: { position: 'absolute', top: 0, right: 0, width: 25, height: 25, borderTopWidth: 4, borderRightWidth: 4, borderColor: '#FFD700' },
   cornerBL: { position: 'absolute', bottom: 0, left: 0, width: 25, height: 25, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: '#FFD700' },
