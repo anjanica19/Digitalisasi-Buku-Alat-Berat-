@@ -27,8 +27,6 @@ const RiwayatScreen = () => {
         return;
       }
 
-      // Endpoint khusus Dosen untuk monitoring SEMUA riwayat mahasiswa
-      // Pastikan backend mengembalikan field: Nama, Nim, FailureCode, DiagnosisTitle, DateDisplay
       const response = await fetch(API_ENDPOINTS.getAllHistory || API_ENDPOINTS.getHistory('all')); 
       if (!response.ok) throw new Error("Gagal mengambil data");
 
