@@ -10,9 +10,6 @@ import { API_ENDPOINTS } from '../data/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ==========================================
-// HELPER: KOMPONEN GAMBAR DENGAN TINGGI OTOMATIS
-// ==========================================
 const AutoHeightImage = ({ uri, style }) => {
   const [aspectRatio, setAspectRatio] = useState(16 / 9); // Default rasio awal
 
@@ -35,9 +32,6 @@ const AutoHeightImage = ({ uri, style }) => {
   );
 };
 
-// ==========================================
-// KOMPONEN STEP CARD (UNTUK TIAP LANGKAH)
-// ==========================================
 const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
   const [showCircuit, setShowCircuit] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -46,7 +40,7 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
 
   const handleOpenZoom = (uri) => {
     setSelectedImg(uri);
-    setScale(1); // Reset zoom ke ukuran asli saat dibuka
+    setScale(1);
     setModalVisible(true);
   };
 
@@ -62,7 +56,6 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
       
       <Text style={styles.causeDesc}>{data.cause_description}</Text>
       
-      {/* 1. TOMBOL LIHAT GAMBAR SIRKUIT */}
       {data.image_url && (
         <TouchableOpacity 
           style={styles.btnCircuit} 
@@ -77,7 +70,6 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
         </TouchableOpacity>
       )}
 
-      {/* GAMBAR SIRKUIT DENGAN BINGKAI DINAMIS */}
       {showCircuit && data.image_url && (
         <TouchableOpacity 
           activeOpacity={0.9} 
@@ -102,7 +94,6 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
         </View>
       </View>
 
-      {/* STANDARD CONDITION DENGAN BINGKAI DINAMIS */}
       <View style={styles.standardBox}>
         <Text style={styles.labelSmall}>STANDARD CONDITION:</Text>
         <Text style={styles.standardValueText}>{data.standard_condition || '-'}</Text>
@@ -133,7 +124,6 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
         )}
       </View>
 
-      {/* MODAL ZOOM (iOS & ANDROID OPTIMIZED) */}
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <View style={styles.modalContainer}>
           <SafeAreaView style={styles.modalHeader}>
@@ -177,9 +167,6 @@ const StepCard = ({ data, index, isLastStep, onFinish, onNext }) => {
   );
 };
 
-// ==========================================
-// MAIN SCREEN
-// ==========================================
 const ChatScreen = ({ navigation, route }) => {
   const [searchText, setSearchText] = useState('');
   const [messages, setMessages] = useState([
@@ -187,10 +174,10 @@ const ChatScreen = ({ navigation, route }) => {
   ]);
   const [loading, setLoading] = useState(false);
   const [activeData, setActiveData] = useState(null);
-  const [currentSessionId, setCurrentSessionId] = useState(null);
   const [userNim, setUserNim] = useState(null); 
   const [userNama, setUserNama] = useState(null); 
   const flatListRef = useRef();
+  const isSearchingRef = useRef(false);
 
   useEffect(() => {
     const getSession = async () => {
@@ -210,53 +197,134 @@ const ChatScreen = ({ navigation, route }) => {
     }
   }, [route.params?.scannedCode]);
 
-  const saveToHistory = async (code, title, solution = null) => {
-    if (!userNim) return;
+  const saveToHistory = async (failureCodeId, title) => {
+    if (!userNim) {
+      console.log("userNim belum ada");
+      return;
+    }
+
     try {
       const payload = {
-        FailureCode: code, UserNim: userNim, UserNama: userNama, DiagnosisTitle: title,
-        TotalSteps: activeData?.causes?.length || activeData?.detail?.causes?.length || 0,
-        SolutionText: solution, Notes: "Dicari melalui chat", SessionId: currentSessionId 
+        diagnosisType: "FAILURE_CODE",
+        failureCodeId: Number(failureCodeId),
+        troubleshootingCaseId: null,
+        userNim,
+        diagnosisTitle: title
       };
+
+      console.log("PAYLOAD HISTORY:", payload);
+
       const response = await fetch(API_ENDPOINTS.saveHistory, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(payload)
       });
-      const result = await response.json();
-      if (result.session_id) setCurrentSessionId(result.session_id);
-    } catch (error) { console.error("History Error:", error); }
-  };
 
-  const handleSearch = async (manualCode = null) => {
-    const codeToSearch = manualCode || searchText;
-    if (!codeToSearch.trim()) return;
-    Keyboard.dismiss();
-    const cleanQuery = codeToSearch.trim().toUpperCase();
-    setMessages((prev) => [...prev, { id: Date.now().toString(), text: cleanQuery, sender: 'user', type: 'text' }]);
-    setSearchText('');
-    setLoading(true);
-    setCurrentSessionId(null); 
+      const text = await response.text();
 
-    try {
-      const url = `${API_ENDPOINTS.failureCode}/${cleanQuery}`;
-      const response = await fetch(url);
-      const json = await response.json();
-      if (response.ok && json) {
-        const detailData = json.detail || json;
-        setActiveData(json);
-        setMessages((prev) => [...prev, { id: 'info-' + Date.now(), sender: 'bot', type: 'info_card', data: detailData }]);
-        saveToHistory(detailData.code, detailData.description, null);
-        setTimeout(() => {
-          setMessages((prev) => [...prev, { id: 'confirm-' + Date.now(), sender: 'bot', type: 'confirm_ask', text: 'Lihat langkah troubleshooting?' }]);
-        }, 800);
-      } else {
-        setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: `Kode "${cleanQuery}" tidak ditemukan.` }]);
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        console.log("Response bukan JSON valid");
       }
+
     } catch (error) {
-      setMessages((prev) => [...prev, { id: 'err-' + Date.now(), sender: 'bot', type: 'text', text: "Koneksi server gagal." }]);
-    } finally { setLoading(false); }
+      console.log("HISTORY ERROR:", error);
+    }
   };
+
+
+const handleSearch = async (manualCode = null) => {
+  if (isSearchingRef.current) return;
+  isSearchingRef.current = true;
+
+  const codeToSearch = manualCode || searchText;
+  if (!codeToSearch.trim()) {
+    isSearchingRef.current = false;
+    return;
+  }
+
+  const cleanQuery = codeToSearch.trim().toUpperCase();
+
+  Keyboard.dismiss();
+
+  setMessages(prev => [
+    ...prev,
+    {
+      id: Date.now().toString(),
+      text: cleanQuery,
+      sender: 'user',
+      type: 'text'
+    }
+  ]);
+
+  setSearchText('');
+  setLoading(true);
+
+  try {
+    const url = `${API_ENDPOINTS.failureCode}/${cleanQuery}`;
+    const response = await fetch(url);
+    const json = await response.json();
+
+    if (response.ok && json) {
+      const detailData = json.detail || json;
+
+      setActiveData(json);
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: 'info-' + Date.now(),
+          sender: 'bot',
+          type: 'info_card',
+          data: detailData
+        }
+      ]);
+
+      saveToHistory(detailData.id, detailData.description);
+
+      setTimeout(() => {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: 'confirm-' + Date.now(),
+            sender: 'bot',
+            type: 'confirm_ask',
+            text: 'Lihat langkah troubleshooting?'
+          }
+        ]);
+      }, 800);
+
+    } else {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: 'err-' + Date.now(),
+          sender: 'bot',
+          type: 'text',
+          text: `Kode "${cleanQuery}" tidak ditemukan.`
+        }
+      ]);
+    }
+
+  } catch (error) {
+    setMessages(prev => [
+      ...prev,
+      {
+        id: 'err-' + Date.now(),
+        sender: 'bot',
+        type: 'text',
+        text: "Koneksi server gagal."
+      }
+    ]);
+  } finally {
+    setLoading(false);
+    isSearchingRef.current = false;
+  }
+};
 
   const showStep = (index) => {
     const causes = activeData?.causes || activeData?.detail?.causes;
@@ -321,10 +389,8 @@ const ChatScreen = ({ navigation, route }) => {
               isLastStep={item.currentIndex === causes.length - 1}
               onNext={() => showStep(item.currentIndex + 1)}
               onFinish={() => {
-                  const d = activeData.detail || activeData;
-                  saveToHistory(d.code, d.description, item.data.cause_description);
-                  Alert.alert("Berhasil", "Diagnosa selesai dan riwayat Anda telah dikirim ke Dosen.");
-              }}
+    Alert.alert("Berhasil", "Diagnosa selesai.");
+}}
            />
          ) : (
            <View style={[styles.bubble, isUser ? styles.userBubble : styles.botBubble]}>

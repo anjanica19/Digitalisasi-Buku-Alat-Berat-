@@ -1,123 +1,251 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { API_ENDPOINTS } from '../data/api';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { API_ENDPOINTS } from '../data/api';
 
-const RiwayatScreen = () => {
+const RiwayatScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState([]); 
-  const [role, setRole] = useState(null); 
+  const [role, setRole] = useState(null);
+  const [data, setData] = useState([]);
+
+  const [selectedType, setSelectedType] = useState('FAILURE_CODE');
 
   const fetchHistory = useCallback(async () => {
     try {
       setLoading(true);
-      const session = await AsyncStorage.getItem('user_session');
-      if (!session) return;
-      
-      const userData = JSON.parse(session);
-      setRole(userData.role); 
 
-      // LOGIKA PROTEKSI: Jika user adalah mahasiswa, jangan tarik data dari server
+      const session = await AsyncStorage.getItem('user_session');
+
+      if (!session) return;
+
+      const userData = JSON.parse(session);
+
+      setRole(userData.role);
+
       if (userData.role !== 'lecturer') {
         setData([]);
-        setLoading(false);
         return;
       }
 
-      const response = await fetch(API_ENDPOINTS.getAllHistory || API_ENDPOINTS.getHistory('all')); 
-      if (!response.ok) throw new Error("Gagal mengambil data");
+      const response = await fetch(
+        `${API_ENDPOINTS.historySummary}?diagnosisType=${selectedType}`
+      );
 
       const result = await response.json();
-      
-      console.log("Data Riwayat Masuk:", result[0]); 
-      setData(result);
+
+      if (result.success) {
+        setData(result.data || []);
+      } else {
+        setData([]);
+      }
     } catch (error) {
-      console.error("Fetch Error:", error);
+      console.log('History Error:', error);
+      setData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedType]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchHistory();
-    }, [fetchHistory])
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const renderCard = ({ item }) => (
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.8}
+      onPress={() => {
+        console.log(
+          'Klik Detail:',
+          item.idHistory,
+          selectedType
+        );
+
+         navigation.navigate('RiwayatDetailScreen', {
+           id: item.idHistory,
+          diagnosisType: selectedType
+         });
+      }}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.badge}>
+          <Text style={styles.code}>
+            {item.code || '-'}
+          </Text>
+        </View>
+
+        <View style={styles.searchBadge}>
+          <MaterialCommunityIcons
+            name="magnify"
+            size={14}
+            color="#003366"
+          />
+          <Text style={styles.searchCount}>
+            {item.totalSearch}x
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.title}>
+        {item.title}
+      </Text>
+    </TouchableOpacity>
   );
 
-  const renderCard = ({ item }) => {
-    // Mapping data agar fleksibel dengan penamaan di Database (Besar/Kecil)
-    const code = item.failureCode || item.FailureCode || item.kode || "N/A";
-    const title = item.diagnosisTitle || item.DiagnosisTitle || item.deskripsi || "Tanpa Judul";
-    const date = item.dateDisplay || item.DateDisplay || item.waktu || "-";
-    
-    // Identitas Mahasiswa yang dicari oleh Dosen
-    const studentName = item.nama || item.Nama || item.UserNama || "Mahasiswa";
-    const studentNim = item.nim || item.Nim || item.UserNim || "-";
-
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.badge}>
-            <Text style={styles.code}>{code}</Text>
-          </View>
-          <View style={styles.dateContainer}>
-            <MaterialCommunityIcons name="calendar-clock" size={14} color="#AAA" />
-            <Text style={styles.date}>{date}</Text>
-          </View>
-        </View>
-
-        {/* BOX INFORMASI MAHASISWA (KHUSUS TAMPILAN DOSEN) */}
-        <View style={styles.studentInfo}>
-          <MaterialCommunityIcons name="account-hard-hat" size={16} color="#003366" />
-          <Text style={styles.studentText}>{studentName} | {studentNim}</Text>
-        </View>
-        
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-        
-        <View style={styles.footerAcent} />
-      </View>
-    );
-  };
-
-  // Tampilan "Lock Screen" jika user yang login adalah Mahasiswa
   if (role === 'student') {
     return (
       <View style={styles.restrictedContainer}>
-        <MaterialCommunityIcons name="lock-alert-outline" size={100} color="#DDD" />
-        <Text style={styles.restrictedTitle}>Akses Terbatas</Text>
-        <Text style={styles.restrictedSub}>Maaf, halaman Monitoring Riwayat hanya dapat diakses oleh akun Dosen untuk keperluan pengawasan.</Text>
+        <MaterialCommunityIcons
+          name="lock-alert-outline"
+          size={100}
+          color="#DDD"
+        />
+
+        <Text style={styles.restrictedTitle}>
+          Akses Terbatas
+        </Text>
+
+        <Text style={styles.restrictedSub}>
+          Halaman Monitoring Riwayat hanya dapat
+          diakses oleh akun Dosen.
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Monitoring Riwayat</Text>
-      
-      {loading && !refreshing && data.length === 0 ? (
-        <ActivityIndicator size="large" color="#003366" style={{ marginTop: 50 }} />
+      <Text style={styles.header}>
+        Monitoring Riwayat
+      </Text>
+
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            selectedType === 'FAILURE_CODE' &&
+              styles.activeTab
+          ]}
+          onPress={() =>
+            setSelectedType('FAILURE_CODE')
+          }
+        >
+          <Text
+            style={[
+              styles.tabText,
+              selectedType === 'FAILURE_CODE' &&
+                styles.activeTabText
+            ]}
+          >
+            Failure-code
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            selectedType === 'S_MODE' &&
+              styles.activeTab
+          ]}
+          onPress={() => setSelectedType('S_MODE')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              selectedType === 'S_MODE' &&
+                styles.activeTabText
+            ]}
+          >
+            S-Mode
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            selectedType === 'E_MODE' &&
+              styles.activeTab
+          ]}
+          onPress={() => setSelectedType('E_MODE')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              selectedType === 'E_MODE' &&
+                styles.activeTabText
+            ]}
+          >
+            E-Mode
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            selectedType === 'H_MODE' &&
+              styles.activeTab
+          ]}
+          onPress={() => setSelectedType('H_MODE')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              selectedType === 'H_MODE' &&
+                styles.activeTabText
+            ]}
+          >
+            H-Mode
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator
+          size="large"
+          color="#003366"
+          style={{ marginTop: 50 }}
+        />
       ) : (
         <FlatList
           data={data}
-          keyExtractor={(item, index) => item.sessionId || item.SessionId || index.toString()}
+          keyExtractor={(item) =>
+            item.idHistory.toString()
+          }
           renderItem={renderCard}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{
+            paddingBottom: 30
+          }}
           refreshControl={
-            <RefreshControl 
-               refreshing={refreshing} 
-               onRefresh={() => { setRefreshing(true); fetchHistory(); }} 
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchHistory();
+              }}
             />
           }
           ListEmptyComponent={
-            <View style={{alignItems: 'center', marginTop: 100}}>
-               <MaterialCommunityIcons name="clipboard-text-search-outline" size={80} color="#EEE" />
-               <Text style={styles.emptyText}>Tidak ada riwayat diagnosa ditemukan.</Text>
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons
+                name="clipboard-text-search-outline"
+                size={80}
+                color="#DDD"
+              />
+
+              <Text style={styles.emptyText}>
+                Belum ada riwayat untuk kategori ini
+              </Text>
             </View>
           }
         />
@@ -127,69 +255,122 @@ const RiwayatScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA', paddingHorizontal: 20 },
-  header: { fontSize: 26, fontWeight: 'bold', marginTop: 50, marginBottom: 20, color: '#003366' },
-  card: { 
-    backgroundColor: '#FFF', 
-    borderRadius: 15, 
-    marginBottom: 15, 
-    padding: 18,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderLeftWidth: 6,
-    borderLeftColor: '#003366',
-    position: 'relative',
-    overflow: 'hidden'
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 20
   },
-  cardHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    marginTop: 50,
+    marginBottom: 20,
+    color: '#003366'
+  },
+
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    gap: 8
+  },
+
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#EEE',
+    borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 12
+    justifyContent: 'center',
   },
-  badge: { 
-    backgroundColor: '#FFD700', 
-    paddingHorizontal: 12, 
-    paddingVertical: 5, 
-    borderRadius: 10 
+
+  activeTab: {
+    backgroundColor: '#003366'
   },
-  code: { fontWeight: '900', fontSize: 13, color: '#003366' },
-  dateContainer: { flexDirection: 'row', alignItems: 'center' },
-  date: { color: '#999', fontSize: 11, marginLeft: 5, fontWeight: '600' },
-  
-  // Style Baru Info Mahasiswa (Nama & NIM)
-  studentInfo: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#F0F4F8', 
-    padding: 8, 
-    borderRadius: 8, 
+
+  tabText: {
+    color: '#666',
+    fontWeight: '600'
+  },
+
+  activeTabText: {
+    color: '#FFF'
+  },
+
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 16,
     marginBottom: 12,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#D1DBE5'
+    elevation: 2
   },
-  studentText: { fontSize: 12, fontWeight: 'bold', color: '#003366', marginLeft: 6 },
 
-  title: { fontSize: 17, fontWeight: '700', color: '#333', lineHeight: 24, paddingRight: 10 },
-  footerAcent: {
-    position: 'absolute',
-    bottom: -10,
-    right: -10,
-    width: 50,
-    height: 50,
-    backgroundColor: '#FFD70015', 
-    borderRadius: 25,
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10
   },
-  emptyText: { textAlign: 'center', marginTop: 15, color: '#999', fontSize: 14 },
 
-  // Style Tampilan Akses Ditolak (Mahasiswa)
-  restrictedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, backgroundColor: '#FFF' },
-  restrictedTitle: { fontSize: 24, fontWeight: 'bold', color: '#003366', marginTop: 25 },
-  restrictedSub: { textAlign: 'center', color: '#888', marginTop: 12, lineHeight: 22, fontSize: 14 }
+  badge: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8
+  },
+
+  code: {
+    fontWeight: 'bold',
+    color: '#003366'
+  },
+
+  searchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+
+  searchCount: {
+    marginLeft: 4,
+    fontWeight: '700',
+    color: '#003366'
+  },
+
+  title: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333'
+  },
+
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 80
+  },
+
+  emptyText: {
+    marginTop: 15,
+    color: '#999'
+  },
+
+  restrictedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#FFF'
+  },
+
+  restrictedTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#003366',
+    marginTop: 25
+  },
+
+  restrictedSub: {
+    textAlign: 'center',
+    color: '#888',
+    marginTop: 12,
+    lineHeight: 22
+  }
 });
 
 export default RiwayatScreen;
