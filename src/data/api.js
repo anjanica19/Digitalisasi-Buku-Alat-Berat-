@@ -1,5 +1,5 @@
 // src/data/api.js
-const IP_ADDRESS = "10.1.13.239"; 
+const IP_ADDRESS = "10.109.186.196"; 
 //const IP_ADDRESS = "192.168.0.104";
 const PORT = "5234";
 
